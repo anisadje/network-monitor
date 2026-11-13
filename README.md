@@ -1,29 +1,30 @@
 # Network Monitor
 
-Un outil de supervision réseau en Python/Linux qui surveille la disponibilité de machines en temps réel.
+A network monitoring tool in Python for Linux that checks the availability of machines in real time.
 
-> Projet réalisé dans le cadre d'un projet personnel pour mieux comprendre les cours de l'UE Réseaux
----
-
-## Fonctionnalités
-
-- **Ping automatique** de chaque machine via ICMP
-- **Tableau de bord en temps réel** avec couleurs dans le terminal (UP en vert, DOWN en rouge)
-- **Journal horodaté** des changements d'état dans un fichier log
-- **Alertes visuelles** dans le terminal quand une machine tombe
-- **Rapport de disponibilité** (% uptime par machine) à l'arrêt du programme
+> Personal project, built to get a better grasp of my networking course.
 
 ---
 
-## Structure du projet
+## Features
+
+- **Automatic ICMP ping** of each machine, at its own interval
+- **Real-time dashboard** in the terminal, with colors (UP in green, DOWN in red)
+- **Timestamped log** of every state change
+- **Visual alerts** in the terminal when a machine goes down
+- **Availability report** (% uptime per machine) when the program stops
+
+---
+
+## Project structure
 
 ```
 network-monitor/
 ├── config/
-│   └── hosts.conf       # Liste des machines à surveiller
+│   └── hosts.conf       # machines to monitor
 ├── logs/
-│   └── monitor.log      # Journal horodaté des événements
-├── monitor.py           # Script principal
+│   └── monitor.log      # timestamped events (created automatically)
+├── monitor.py           # main script
 └── README.md
 ```
 
@@ -31,90 +32,93 @@ network-monitor/
 
 ## Installation
 
-Aucune dépendance externe — uniquement des modules Python standard.
+No external dependency: only modules from the Python standard library.
 
 ```bash
 git clone https://github.com/anisadje/network-monitor.git
 cd network-monitor
-mkdir -p logs
 ```
 
 ---
 
-## Utilisation
+## Usage
 
-### 1. Configurer les machines à surveiller
+### 1. Choose the machines to monitor
 
-Édite le fichier `config/hosts.conf` :
+Edit `config/hosts.conf`:
 
 ```
-# Format : IP_ou_hostname   nom_affiche   intervalle_secondes
-192.168.1.1      Routeur          5
-8.8.8.8          DNS-Google       10
+# Format: IP_or_hostname   display_name   interval_seconds
+192.168.1.1      Router           5
+8.8.8.8          Google-DNS       10
 github.com       GitHub           15
 ```
 
-- Les lignes commençant par `#` sont ignorées
-- L'intervalle est optionnel (défaut : 10 secondes)
+- Lines starting with `#` are ignored
+- The interval is optional (default: 10 seconds)
 
-### 2. Lancer la supervision
+### 2. Start monitoring
 
 ```bash
 python3 monitor.py
 ```
 
-### 3. Arrêter et afficher le rapport
+### 3. Stop and show the report
 
 ```
 Ctrl+C
 ```
 
-Le rapport de disponibilité s'affiche automatiquement.
+The availability report is printed automatically.
 
 ---
 
-## Exemple de sortie
+## Example output
 
 ```
-=== SUPERVISION RESEAU - 2026-03-21 18:22:03 ===
+=== NETWORK MONITOR - 2026-03-21 18:22:03 ===
 ------------------------------------------------
-Routeur         192.168.1.1        DOWN
-DNS-Google      8.8.8.8            UP
+Router          192.168.1.1        DOWN
+Google-DNS      8.8.8.8            UP
 GitHub          github.com         UP
+
+⚠️  ALERT: Router (192.168.1.1) is DOWN!
 ```
 
 ```
-=== RAPPORT DE DISPONIBILITÉ ===
+              AVAILABILITY REPORT
 ------------------------------------------------
-      Routeur         192.168.1.1        0/4 pings    0.0% uptime
-      DNS-Google      8.8.8.8            4/4 pings  100.0% uptime
-      GitHub          github.com         4/4 pings  100.0% uptime
+Router          192.168.1.1        0/12 pings   0.0% uptime
+Google-DNS      8.8.8.8            6/6 pings    100.0% uptime
+GitHub          github.com         4/4 pings    100.0% uptime
 ```
 
 ---
 
-## Format du fichier log
+## Log format
+
+Only state changes are logged, so the file stays short:
 
 ```
-[2026-03-21 18:22:03] 192.168.1.1 (Routeur) -> False
-[2026-03-21 18:22:03] 8.8.8.8 (DNS-Google) -> True
+[2026-03-21 18:22:03] 192.168.1.1 (Router) -> DOWN
+[2026-03-21 18:22:03] 8.8.8.8 (Google-DNS) -> UP
 ```
 
 ---
 
-## Compatibilité
+## Compatibility
 
-- **OS** : Linux / WSL
-- **Python** : 3.6+
-- **Dépendances** : aucune (modules standard uniquement : `subprocess`, `datetime`, `os`, `time`)
+- **OS:** Linux / WSL
+- **Python:** 3.6+
+- **Dependencies:** none (standard modules only: `subprocess`, `datetime`, `os`, `shutil`, `time`)
 
 ---
 
-## Concepts mis en œuvre
+## Concepts
 
-- Protocole **ICMP** et supervision réseau par ping
-- Parsing de fichier de configuration
-- Gestion d'état et détection de changements
-- Logging horodaté
-- Affichage terminal avec codes **ANSI**
-- Gestion des signaux (`KeyboardInterrupt`)
+- **ICMP** protocol and ping-based monitoring
+- Configuration file parsing
+- State tracking and change detection
+- Timestamped logging
+- Terminal output with **ANSI** codes
+- Clean shutdown on `KeyboardInterrupt`
