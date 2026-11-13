@@ -1,191 +1,187 @@
 import subprocess
 from datetime import datetime
-import os 
-import time 
+import os
+import shutil
+import time
 
-DEFAULT_INTERVAL = 10 # Intervalle de ping par défaut (secondes) si non spécifié dans hosts.conf
+DEFAULT_INTERVAL = 10  # default ping interval (seconds) when hosts.conf does not give one
 
-# Couleurs ANSI
+# ANSI colors
 
-VERT = "\033[32m"
-ROUGE = "\033[31m"
+GREEN = "\033[32m"
+RED = "\033[31m"
 RESET = "\033[0m"
 BOLD = "\033[1m"
-FOND_ROUGE = "\033[41m"
+RED_BG = "\033[41m"
 
-# CHARGEMENT DE LA CONFIGURATION
+# CONFIGURATION
 
-def load_hosts(filepath): 
+def load_hosts(filepath):
     """
-    Lit le fichier de configuration et retourne la liste des hôtes à surveiller
+    Reads the configuration file and returns the list of hosts to monitor.
     """
-    hotes = []
-    try: 
-        with open(filepath, "r") as f: 
-            lignes = f.readlines()
-            for ligne in lignes : 
-                ligne = ligne.strip()
+    hosts = []
+    try:
+        with open(filepath, "r") as f:
+            lines = f.readlines()
+            for line in lines:
+                line = line.strip()
 
-                # Ignorer les lignes vides et les commentaires
-                if ligne == "" or ligne.startswith("#"): 
-                    continue #on passe directement à la prochaine itération
-
-                champs = ligne.split()
-                if len(champs) < 2: 
-                    print(f"Ligne ignorée (format invalide) : '{ligne}'")
+                # Skip empty lines and comments
+                if line == "" or line.startswith("#"):
                     continue
-                hote = {"ip": champs[0], 
-                        "nom": champs[1], 
-                        "interval" : int(champs[2]) if len(champs)>=3 else DEFAULT_INTERVAL} #si il y a 3 éléments dans la liste
-                hotes.append(hote)
+
+                fields = line.split()
+                if len(fields) < 2:
+                    print(f"Skipped line (invalid format): '{line}'")
+                    continue
+                host = {"ip": fields[0],
+                        "name": fields[1],
+                        "interval": int(fields[2]) if len(fields) >= 3 else DEFAULT_INTERVAL}
+                hosts.append(host)
 
     except FileNotFoundError:
-        print(f"Erreur : fichier '{filepath}' introuvable.")
+        print(f"Error: file '{filepath}' not found.")
         return []
-    
-    return hotes 
 
-# PING 
+    return hosts
 
-def ping_host(ip): 
+# PING
+
+def ping_host(ip):
     """
-    Envoie un ping ICMP à l'adresse donnée et retourne son état de disponibilité
+    Sends one ICMP ping to the given address and returns whether it answered.
 
-    Utilise la commande système ping :
-        -c 1 : envoie un seul paquet (évite une boucle infinie)
-        -W 1 : timeout de 1 seconde maximum
+    Uses the system ping command:
+        -c 1 : send a single packet
+        -W 1 : wait at most 1 second
 
-    Retourne True si l'hôte réponde (code de retour 0), False sinon.
+    Returns True if the host answers (exit code 0), False otherwise.
     """
-    #ping -c 1 - W 1 8.8.8.8 : -c 1 = envoie 1 paquet et s'arrête. 
-    # -W 1 = attend max 1 seconde 
-
-    resultat = subprocess.run(
-        ["ping", "-c", "1", "-W", "1", ip], #la commande découpé 
-        stdout=subprocess.DEVNULL, #on cache l'affichage du ping
+    result = subprocess.run(
+        ["ping", "-c", "1", "-W", "1", ip],
+        stdout=subprocess.DEVNULL,  # hide the ping output
         stderr=subprocess.DEVNULL
     )
-    return resultat.returncode == 0 
+    return result.returncode == 0
 
 # LOGGING
 
-def log_event(ip, nom, status):
+def log_event(ip, name, status):
     """
-    Enregistre un changement d'état dans le fichier log
+    Writes a state change to the log file.
 
-    Le fichier est ouvert en mode 'append' pour ne jamer écraser l'historique
+    The file is opened in append mode so the history is never overwritten.
     """
-    maintenant = datetime.now()
-    maintenant = maintenant.strftime("%Y-%m-%d %H:%M:%S")
-    with open("logs/monitor.log", "a") as f: 
-        ligne = f"[{maintenant}] {ip} ({nom}) -> {status}\n"
-        f.write(ligne)
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    state = "UP" if status else "DOWN"
+    os.makedirs("logs", exist_ok=True)
+    with open("logs/monitor.log", "a") as f:
+        f.write(f"[{now}] {ip} ({name}) -> {state}\n")
 
-# VERIFICATION D'UN HOTE
+# CHECKING A HOST
 
-def check_hote(hote, etats_precedents):
+def check_host(host, previous_states):
     """
-    Ping un hôte et détecte les changements d'état
+    Pings a host and detects state changes.
 
-    Si l'état a changé depuis le dernier ping (ex : UP puis DOWN),
-    l'évènement est enregistré dans le log. 
-    
-    Une alerte visuelle est affichée si la machine est DOWN
+    If the state changed since the last ping (e.g. UP then DOWN),
+    the event is written to the log.
 
-    Retourne le statut actuelle (True = UP, False = DOWN)
+    Returns the current status (True = UP, False = DOWN).
     """
-    ip = hote["ip"]
-    nom = hote["nom"]
-    nouveau_status = ping_host(ip)
+    ip = host["ip"]
+    name = host["name"]
+    new_status = ping_host(ip)
 
-    # Logger uniquement si l'état a changé (évite les doublons dans le log)
-    if nouveau_status != etats_precedents.get(ip):
-        etats_precedents[ip] = nouveau_status
-        log_event(ip, nom, nouveau_status)
+    # Only log when the state changes (avoids duplicates in the log)
+    if new_status != previous_states.get(ip):
+        previous_states[ip] = new_status
+        log_event(ip, name, new_status)
 
-     # Alerte visuelle immédiate si la machine vient de tomber   
-    if nouveau_status == False : 
-        print(f"\n{FOND_ROUGE}{BOLD}⚠️  ALERTE : {nom} ({ip}) est DOWN ! {RESET}\n")
+    return new_status
 
-    return nouveau_status
+# DASHBOARD
 
-
-
-# TABLEAU DE BORD
-
-def afficher_dashboard(hosts, etats_precedents): 
+def show_dashboard(hosts, previous_states):
     """
-    Efface le terminal et affiche l'état actuel de toutes les machines.
-
-    UP -> affiche 
+    Clears the terminal and shows the current state of every host,
+    followed by an alert for each host that is DOWN.
     """
     os.system("clear")
 
-    maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"{BOLD}=== SUPERVISION RESEAU - {maintenant} ==={RESET}")
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    print(f"{BOLD}=== NETWORK MONITOR - {now} ==={RESET}")
     print("-" * 48)
 
-    for hote in hosts: 
-        ip = hote["ip"]
-        nom = hote["nom"]
-        status = etats_precedents.get(ip)
+    for host in hosts:
+        ip = host["ip"]
+        name = host["name"]
+        status = previous_states.get(ip)
 
-        if status == True: 
-            etat = "UP"
-            couleur = VERT
+        if status == True:
+            state = "UP"
+            color = GREEN
         elif status == False:
-            etat = "DOWN"
-            couleur = ROUGE
-        else: 
-            etat = "..."
-            couleur = ""
+            state = "DOWN"
+            color = RED
+        else:
+            state = "..."
+            color = ""
 
-        print(f"{nom.ljust(15)} {ip.ljust(18)} {couleur}{BOLD}{etat}{RESET}")
+        print(f"{name.ljust(15)} {ip.ljust(18)} {color}{BOLD}{state}{RESET}")
+
+    # Alerts are printed after the table, otherwise "clear" would erase them
+    for host in hosts:
+        if previous_states.get(host["ip"]) == False:
+            print(f"\n{RED_BG}{BOLD}⚠️  ALERT: {host['name']} ({host['ip']}) is DOWN! {RESET}")
 
 
-def afficher_rapport(hotes, total_pings, total_up):
+def show_report(hosts, total_pings, total_up):
     """
-    Affiche le rapport de disponibilité final
+    Prints the final availability report.
     """
-    largeur = os.get_terminal_size().columns
-    print(f"\n{BOLD}{'RAPPORT DE DISPONIBILITE'.center(largeur)}{RESET}")
-    print("-".center(largeur, "-"))
-    for hote in hotes: 
-        ip = hote["ip"]
-        nom = hote["nom"]
+    width = shutil.get_terminal_size().columns
+    print(f"\n{BOLD}{'AVAILABILITY REPORT'.center(width)}{RESET}")
+    print("-".center(width, "-"))
+    for host in hosts:
+        ip = host["ip"]
+        name = host["name"]
         total = total_pings[ip]
         up = total_up[ip]
         pct = (up / total * 100) if total > 0 else 0
 
-        ligne = f"{nom.ljust(15)} {ip.ljust(18)} {up}/{total} pings   {pct:.1f}% uptime"
-        print(ligne.center(largeur))
+        line = f"{name.ljust(15)} {ip.ljust(18)} {up}/{total} pings   {pct:.1f}% uptime"
+        print(line.center(width))
 
-def superviser(hotes):
-    etats_precedents = {}
+def monitor(hosts):
+    previous_states = {}
     total_pings = {}
     total_up = {}
-    for hote in hotes: 
-        etats_precedents[hote["ip"]] = None
-        total_pings[hote["ip"]] = 0
-        total_up[hote["ip"]] = 0
+    last_check = {}
+    for host in hosts:
+        previous_states[host["ip"]] = None
+        total_pings[host["ip"]] = 0
+        total_up[host["ip"]] = 0
+        last_check[host["ip"]] = 0
     try:
-        while True : 
-            for hote in hotes : 
-                ip = hote["ip"]
-                status = check_hote(hote, etats_precedents)
+        while True:
+            now = time.time()
+            for host in hosts:
+                ip = host["ip"]
+                # each host is pinged at its own interval
+                if now - last_check[ip] < host["interval"]:
+                    continue
+                last_check[ip] = now
+                status = check_host(host, previous_states)
                 total_pings[ip] += 1
-                if status: 
+                if status:
                     total_up[ip] += 1
-            afficher_dashboard(hotes, etats_precedents)
-            time.sleep(5)
-    except KeyboardInterrupt: 
-        afficher_rapport(hotes, total_pings, total_up)
+            show_dashboard(hosts, previous_states)
+            time.sleep(1)
+    except KeyboardInterrupt:
+        show_report(hosts, total_pings, total_up)
 
 if __name__ == "__main__":
-    hotes = load_hosts("config/hosts.conf")
-    superviser(hotes)
-
-    
-
-
-
+    hosts = load_hosts("config/hosts.conf")
+    monitor(hosts)
